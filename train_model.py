@@ -8,13 +8,34 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, \
+    f1_score
 from sklearn.preprocessing import LabelEncoder
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 
+class EmbeddingsDataset(Dataset):
+    """
+    Dataset class for loading embeddings
+    """
+
+    def __init__(self, embeddings, labels):
+        self.embeddings = torch.tensor(embeddings)
+        self.labels = torch.tensor(labels)
+
+    def __getitem__(self, idx):
+        return self.embeddings[idx], self.labels[idx]
+
+    def __len__(self):
+        return len(self.embeddings)
+
+
 class GenderCls(nn.Module):
+    """
+    Baseline model class for gender classification
+    """
+
     def __init__(self, input_dim=256, num_classes=2):
         super(GenderCls, self).__init__()
         self.fc1 = nn.Linear(input_dim, 128)
@@ -27,10 +48,15 @@ class GenderCls(nn.Module):
 
 
 def train(model, train_loader, optimizer, criterion, num_epoch, device):
-    for epoch in tqdm(range(num_epoch)):
+    """
+    Train a model on a train dataset
+    """
+    for epoch in tqdm(range(num_epoch), desc="Training Progress"):
         model.train()
 
-        for embeddings_batch, labels_batch in train_loader:
+        for embeddings_batch, labels_batch in tqdm(
+                train_loader, desc=f"Epoch {epoch + 1}/{num_epoch}"
+        ):
             embeddings_batch = embeddings_batch.to(device)
 
             labels_batch = labels_batch.long()
@@ -43,6 +69,10 @@ def train(model, train_loader, optimizer, criterion, num_epoch, device):
 
 
 def evaluate(model, test_loader, device):
+    """
+    Evaluates a model on a test dataset. Calculates accuracy,
+    precision, recall and f1-score
+    """
     model.eval()
     total_samples_test = 0
     true_labels = []
@@ -70,25 +100,35 @@ def evaluate(model, test_loader, device):
     return metrics
 
 
-def get_npy_embeddings(source_path):
+def get_npy_embeddings(source_path, split):
+    """
+    Reads embddings from a .npy file
+    """
     source = np.load(os.path.join(
         source_path, "numpy_embs.npy"), allow_pickle=True)
     source = source[0]
 
-    train_embeddings = np.array([item['embedding']
-                                for item in source['train']])
-    train_labels = [item['label'] for item in source['train']]
+    if split == "train":
+        embeddings = np.array([item['embedding'] for item in source['train']])
+        labels = [item['label'] for item in source['train']]
+    elif split == "test":
+        embeddings = np.array([item['embedding'] for item in source['test']])
+        labels = [item['label'] for item in source['test']]
+    else:
+        raise ValueError(
+            f"Invalid split. Expected 'test' or 'train', got {split}")
+    return embeddings, labels
 
-    test_embeddings = np.array([item['embedding'] for item in source['test']])
-    test_labels = [item['label'] for item in source['test']]
-    return train_embeddings, train_labels, test_embeddings, test_labels
 
-
-def get_chroma_embeddings(source_path, split, collection_name="gender_embeddings"):
+def get_chroma_embeddings(source_path, split,
+                          collection_name="gender_embeddings"):
+    """
+    Reads embeddings from ChromaDB
+    """
     client = chromadb.PersistentClient(path=source_path)
     collection = client.get_collection(name=collection_name)
     results = collection.get(where={"split": split}, include=[
-                             "embeddings", "metadatas"])
+        "embeddings", "metadatas"])
     embeddings = np.array(results['embeddings'], dtype=np.float32)
     labels = [item['label'] for item in results['metadatas']]
 
@@ -96,12 +136,11 @@ def get_chroma_embeddings(source_path, split, collection_name="gender_embeddings
 
 
 def get_loaders(train_vectors, train_labels, test_vectors, test_labels):
-
-    train_dataset = TensorDataset(torch.tensor(
-        train_vectors), torch.tensor(train_labels))
-    test_dataset = TensorDataset(torch.tensor(
-        test_vectors), torch.tensor(test_labels))
-
+    """
+    Creates dataloaders for train and test files
+    """
+    train_dataset = EmbeddingsDataset(train_vectors, train_labels)
+    test_dataset = EmbeddingsDataset(test_vectors, test_labels)
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
@@ -109,6 +148,9 @@ def get_loaders(train_vectors, train_labels, test_vectors, test_labels):
 
 
 def save_visualization(model, vectors, labels, save_path, device):
+    """
+    Saves embedding visualization in .png files
+    """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     vectors = torch.FloatTensor(vectors).to(device)
@@ -137,6 +179,9 @@ def save_visualization(model, vectors, labels, save_path, device):
 
 
 def save_metrics(metrics, save_path):
+    """
+    Saves computed metrics in .txt file 
+    """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     with open(save_path, 'w') as f:
@@ -145,6 +190,9 @@ def save_metrics(metrics, save_path):
 
 
 def main():
+    """
+    Main function
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--embeddings_source",
@@ -177,8 +225,12 @@ def main():
         raise FileNotFoundError(f"Folder {args.source_path} does not exists.")
 
     if args.embeddings_source == "npy":
-        train_embeddings, train_labels, test_embeddings, test_labels = get_npy_embeddings(
-            args.source_path)
+        train_embeddings, train_labels = get_npy_embeddings(
+            args.source_path, "train"
+        )
+        test_embeddings, test_labels = get_npy_embeddings(
+            args.source_path, "test"
+        )
     else:
         train_embeddings, train_labels = get_chroma_embeddings(
             args.source_path, split="train")
