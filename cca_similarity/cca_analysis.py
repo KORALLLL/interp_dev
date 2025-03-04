@@ -1,6 +1,6 @@
 import argparse
 import os
-from extract_features import extract_embedding
+from extract_features import extract_features
 from cca_score import CCA
 from collections import defaultdict
 from pathlib import Path
@@ -77,7 +77,7 @@ def get_activations(model, audio_path, device):
     """
     Gets model activations.
     """
-    feats = extract_embedding(audio_path)
+    feats = extract_features(audio_path)
     feats = feats.to(device)
 
     with torch.no_grad():

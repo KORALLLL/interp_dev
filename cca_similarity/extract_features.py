@@ -5,6 +5,7 @@ import torchaudio.compliance.kaldi as kaldi
 resample_rate = 16000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 def compute_fbank(wavform,
                   sample_rate=16000,
                   num_mel_bins=80,
@@ -21,13 +22,13 @@ def compute_fbank(wavform,
     return feat
 
 
-def extract_embedding(audio_path: str):
+def extract_features(audio_path: str):
     pcm, sample_rate = torchaudio.load(audio_path,
                                        normalize=False)
-    return extract_embedding_from_pcm(pcm, sample_rate)
+    return extract_feature_from_pcm(pcm, sample_rate)
 
 
-def extract_embedding_from_pcm(pcm: torch.Tensor, sample_rate: int):
+def extract_feature_from_pcm(pcm: torch.Tensor, sample_rate: int):
     pcm = pcm.to(torch.float)
     if sample_rate != resample_rate:
         pcm = torchaudio.transforms.Resample(

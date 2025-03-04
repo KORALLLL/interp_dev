@@ -19,10 +19,68 @@ class EmbeddingsDataset(Dataset):
     """
     Dataset class for loading embeddings
     """
+    def __init__(
+            self,
+            source_path,
+            split,
+            source_type,
+            collection_name="gender_embeddings"):
+        self.lb = LabelEncoder()
 
-    def __init__(self, embeddings, labels):
-        self.embeddings = torch.tensor(embeddings)
-        self.labels = torch.tensor(labels)
+        if source_type == "npy":
+            self.embeddings, self.labels = self.get_npy_embeddings(
+                source_path, split)
+        elif source_type == "chromadb":
+            self.embeddings, self.labels = self.get_chroma_embeddings(
+                source_path, split, collection_name)
+        else:
+            raise ValueError(
+                f"Invalid source type: {source_type}. "
+                "Choose 'npy' or 'chromadb'."
+            )
+
+        self.embeddings = torch.tensor(self.embeddings, dtype=torch.float32)
+        self.labels = torch.tensor(self.labels, dtype=torch.long)
+
+    def get_npy_embeddings(self, source_path, split):
+        """
+        Reads embddings from a .npy file
+        """
+        source = np.load(os.path.join(
+            source_path, "numpy_embs.npy"), allow_pickle=True)
+        source = source[0]
+
+        if split == "train":
+            embeddings = np.array([item['embedding']
+                                  for item in source['train']])
+            labels = [item['label'] for item in source['train']]
+        elif split == "test":
+            embeddings = np.array([item['embedding']
+                                  for item in source['test']])
+            labels = [item['label'] for item in source['test']]
+        else:
+            raise ValueError(
+                f"Invalid split. Expected 'test' or 'train', got {split}")
+        labels = self.lb.fit_transform(labels)
+        return embeddings, labels
+
+    def get_chroma_embeddings(
+            self,
+            source_path,
+            split,
+            collection_name="gender_embeddings"):
+        """
+        Reads embeddings from ChromaDB
+        """
+        client = chromadb.PersistentClient(path=source_path)
+        collection = client.get_collection(name=collection_name)
+        results = collection.get(where={"split": split}, include=[
+            "embeddings", "metadatas"])
+        embeddings = np.array(results['embeddings'], dtype=np.float32)
+        labels = [item['label'] for item in results['metadatas']]
+
+        labels = self.lb.fit_transform(labels)
+        return embeddings, labels
 
     def __getitem__(self, idx):
         return self.embeddings[idx], self.labels[idx]
@@ -78,7 +136,8 @@ def evaluate(model, test_loader, device):
     true_labels = []
     pred_labels = []
     with torch.no_grad():
-        for embeddings_batch, labels_batch in test_loader:
+        for embeddings_batch, labels_batch in tqdm(
+                test_loader, desc="Evaluation Progress"):
             embeddings_batch = embeddings_batch.to(device)
 
             labels_batch = labels_batch.long()
@@ -100,51 +159,24 @@ def evaluate(model, test_loader, device):
     return metrics
 
 
-def get_npy_embeddings(source_path, split):
-    """
-    Reads embddings from a .npy file
-    """
-    source = np.load(os.path.join(
-        source_path, "numpy_embs.npy"), allow_pickle=True)
-    source = source[0]
-
-    if split == "train":
-        embeddings = np.array([item['embedding'] for item in source['train']])
-        labels = [item['label'] for item in source['train']]
-    elif split == "test":
-        embeddings = np.array([item['embedding'] for item in source['test']])
-        labels = [item['label'] for item in source['test']]
-    else:
-        raise ValueError(
-            f"Invalid split. Expected 'test' or 'train', got {split}")
-    return embeddings, labels
-
-
-def get_chroma_embeddings(source_path, split,
-                          collection_name="gender_embeddings"):
-    """
-    Reads embeddings from ChromaDB
-    """
-    client = chromadb.PersistentClient(path=source_path)
-    collection = client.get_collection(name=collection_name)
-    results = collection.get(where={"split": split}, include=[
-        "embeddings", "metadatas"])
-    embeddings = np.array(results['embeddings'], dtype=np.float32)
-    labels = [item['label'] for item in results['metadatas']]
-
-    return embeddings, labels
-
-
-def get_loaders(train_vectors, train_labels, test_vectors, test_labels):
+def get_loaders(source_path, source_type):
     """
     Creates dataloaders for train and test files
     """
-    train_dataset = EmbeddingsDataset(train_vectors, train_labels)
-    test_dataset = EmbeddingsDataset(test_vectors, test_labels)
+    train_dataset = EmbeddingsDataset(
+        source_path, split="train", source_type=source_type)
+    test_dataset = EmbeddingsDataset(
+        source_path, split="test", source_type=source_type)
+
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-    return train_loader, test_loader
+    return (
+        train_loader,
+        test_loader,
+        test_dataset,
+        train_dataset.embeddings.shape[1]
+    )
 
 
 def save_visualization(model, vectors, labels, save_path, device):
@@ -180,7 +212,7 @@ def save_visualization(model, vectors, labels, save_path, device):
 
 def save_metrics(metrics, save_path):
     """
-    Saves computed metrics in .txt file 
+    Saves computed metrics in .txt file
     """
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -224,28 +256,12 @@ def main():
     if not os.path.exists(args.source_path):
         raise FileNotFoundError(f"Folder {args.source_path} does not exists.")
 
-    if args.embeddings_source == "npy":
-        train_embeddings, train_labels = get_npy_embeddings(
-            args.source_path, "train"
-        )
-        test_embeddings, test_labels = get_npy_embeddings(
-            args.source_path, "test"
-        )
-    else:
-        train_embeddings, train_labels = get_chroma_embeddings(
-            args.source_path, split="train")
-        test_embeddings, test_labels = get_chroma_embeddings(
-            args.source_path, split="test")
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    lb = LabelEncoder()
-    train_labels = lb.fit_transform(train_labels)
-    test_labels = lb.fit_transform(test_labels)
-
-    train_loader, test_loader = get_loaders(
-        train_embeddings, train_labels, test_embeddings, test_labels)
-    model = GenderCls(train_embeddings.shape[1], 2).to(device)
+    train_loader, test_loader, test_dataset, input_dim = get_loaders(
+        args.source_path, args.embeddings_source
+    )
+    model = GenderCls(input_dim, 2).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
 
@@ -254,8 +270,10 @@ def main():
 
     metrics = evaluate(model, test_loader, device)
     save_metrics(metrics, args.eval_path)
-    save_visualization(model, test_embeddings, test_labels,
-                       args.visual_path, device=device)
+    save_visualization(
+        model, test_dataset.embeddings.numpy(),
+        test_dataset.labels.numpy(), args.visual_path, device=device
+    )
 
 
 if __name__ == '__main__':
