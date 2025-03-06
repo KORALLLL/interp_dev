@@ -125,13 +125,8 @@ class InferenceCallback(TrainerCallback):
             with torch.no_grad():
                 encoder_embeds = model.speech_encoder(sample_emb)
                 attention_mask = torch.ones(encoder_embeds.shape[:2], dtype=torch.long, device=encoder_embeds.device)
-                encoder_outputs = model.t5.encoder(
-                    inputs_embeds=encoder_embeds,
-                    attention_mask=attention_mask,
-                    return_dict=True
-                )
                 generated_ids = model.t5.generate(
-                    input_embeds=encoder_outputs, 
+                    input_embeds=encoder_embeds, 
                     max_length=128,
                     num_beams=5,
                     early_stopping=True
