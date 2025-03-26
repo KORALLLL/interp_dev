@@ -46,7 +46,9 @@ def process_utterance(wav_path, textgrid_path):
         # Если специфичный слой не найден, берём первый слой
         tier = tg.tiers[0]
 
-    results = []
+    phonemes = []
+    pitches = []
+
     # Проходим по всем интервалам выбранного слоя
     for interval in tier.intervals:
         label = interval.mark.strip()
@@ -56,15 +58,16 @@ def process_utterance(wav_path, textgrid_path):
         tmin = interval.minTime
         tmax = interval.maxTime
         avg_pitch = get_average_pitch(pitch, tmin, tmax)
-        results.append((label, tmin, tmax, avg_pitch))
-    return results
+        phonemes.append(label)
+        pitches.append(f"{avg_pitch:.2f}" if avg_pitch is not None else "N/A")
+    return phonemes, pitches
 
 
 def main():
     # Указываем базовые директории
     audio_base = "LibriTTS_R/test-clean"
     alignments_base = "test-clean-alignments"
-    output_csv = "output.csv"
+    output_csv = "output1.csv"
 
     all_results = []  # Собираем результаты из всех файлов
 
@@ -89,25 +92,29 @@ def main():
                     textgrid_filename = os.path.splitext(file)[0] + ".TextGrid"
                     textgrid_path = os.path.join(alignments_base, speaker, textgrid_filename)
                     if not os.path.exists(textgrid_path):
-                        print(f"TextGrid не найден для {wav_path}")
+                        # print(f"TextGrid не найден для {wav_path}")
                         continue
-                    print(f"\nОбработка файла:\n  WAV: {wav_path}\n  TextGrid: {textgrid_path}")
-                    results = process_utterance(wav_path, textgrid_path)
-                    for res in results:
-                        all_results.append(res)
+                    # print(f"\nОбработка файла:\n  WAV: {wav_path}\n  TextGrid: {textgrid_path}")
+                    phonemes, pitches = process_utterance(wav_path, textgrid_path)
+
+                    if phonemes:
+                        all_results.append([file, " ".join(phonemes), " ".join(pitches)])
+                    # for res in results:
+                        # all_results.append((wav_path,) + res)
                     # Выводим результаты
-                    for label, tmin, tmax, avg_pitch in results:
-                        pitch_str = f"{avg_pitch:.2f} Hz" if avg_pitch is not None else "N/A"
-                        print(f"Фонема: {label:5s} | Интервал: {tmin:6.3f}-{tmax:6.3f} сек | Средний питч: {pitch_str}")
-                    print("-" * 60)
+                    # for label, tmin, tmax, avg_pitch in results:
+                        # pitch_str = f"{avg_pitch:.2f} Hz" if avg_pitch is not None else "N/A"
+                        # print(f"Фонема: {label:5s} | Интервал: {tmin:6.3f}-{tmax:6.3f} сек | Средний питч: {pitch_str}")
+                    # print("-" * 60)
 
     # Записываем все результаты в CSV
     with open(output_csv, mode="w", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["Фонема", "Начало интервала (сек)", "Конец интервала (сек)", "Средний питч (Hz)"])
-        for label, tmin, tmax, avg_pitch in all_results:
-            pitch_str = f"{avg_pitch:.2f}" if avg_pitch is not None else "N/A"
-            writer.writerow([label, f"{tmin:.3f}", f"{tmax:.3f}", pitch_str])
+        writer.writerow(["Файл", "Фонемы", "Средние питчи (Hz)"])
+        writer.writerows(all_results)
+        # for file_path, label, tmin, tmax, avg_pitch in all_results:
+            # pitch_str = f"{avg_pitch:.2f}" if avg_pitch is not None else "N/A"
+            # writer.writerow([file_path, label, f"{tmin:.3f}", f"{tmax:.3f}", pitch_str])
 
     print(f"\nРезультаты сохранены в файле: {output_csv}")
 
