@@ -67,7 +67,7 @@ def main():
     # Указываем базовые директории
     audio_base = "LibriTTS_R/test-clean"
     alignments_base = "test-clean-alignments"
-    output_csv = "output1.csv"
+    output_csv = "markup_labels.csv"
 
     all_results = []  # Собираем результаты из всех файлов
 
