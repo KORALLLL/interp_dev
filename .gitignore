@@ -173,3 +173,8 @@ cython_debug/
 /dataset/
 /pretrain_dir/
 /results/
+
+/dataset
+/dataset_split
+/embeddings
+/model_weights
