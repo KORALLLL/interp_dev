@@ -11,4 +11,4 @@ class FeedForwardAda(nn.Module):
 
     def forward(self, x: torch.Tensor, gamma: torch.Tensor) -> torch.Tensor:
         ff_out = self.linear2(self.dropout(F.gelu(self.linear1(x))))
-        return gamma * ff_out
+        return (gamma + 1) * ff_out

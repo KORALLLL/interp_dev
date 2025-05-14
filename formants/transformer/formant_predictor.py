@@ -13,7 +13,8 @@ class FormantPredictor(nn.Module):
         )
         self.regressor = nn.Linear(hidden_dim, num_formants)
 
-    def forward(self, token_ids, speech_embedding):
-        x = self.encoder(token_ids, speech_embedding)   # (B, T, H)
-        formants = self.regressor(x)                    # (B, T, 3)
+    def forward(self, token_ids, speech_embedding, attention_mask=None):
+        x = self.encoder(token_ids, speech_embedding, attention_mask=attention_mask)
+        formants = self.regressor(x)
         return formants
+

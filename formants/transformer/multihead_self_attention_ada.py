@@ -15,17 +15,19 @@ class MultiHeadSelfAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def scaled_dot_product_attention(self, q, k, v, mask=None):
-        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.d_k)  # (B, H, T, T)
 
         if mask is not None:
-            if mask.dim() == 3:
+            if mask.dim() == 2:
+                mask = mask.unsqueeze(1).unsqueeze(2)
+            elif mask.dim() == 3:
                 mask = mask.unsqueeze(1)
             scores = scores.masked_fill(mask == 0, float('-inf'))
 
         attn_weights = F.softmax(scores, dim=-1)
         attn_weights = self.dropout(attn_weights)
-
         output = torch.matmul(attn_weights, v)
+
         return output, attn_weights
 
     def forward(self, x: torch.Tensor, gamma: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
@@ -42,5 +44,5 @@ class MultiHeadSelfAttention(nn.Module):
 
         out = self.w_o(attn_out)
 
-        return gamma * out
+        return (gamma + 1) * out
 

@@ -1,12 +1,12 @@
 import torch
-import torch.nn as nn
+import math
 
-class LearnablePositionalEncoding(nn.Module):
-    def __init__(self, max_len: int, hidden_dim: int):
-        super().__init__()
-        self.pos_embedding = nn.Embedding(max_len, hidden_dim)
+def SinusoidalPosEmbedding(max_len, hidden_dim, device=None):
+    position = torch.arange(max_len, dtype=torch.float, device=device).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, hidden_dim, 2, dtype=torch.float, device=device) * (-math.log(10000.0) / hidden_dim))
 
-    def forward(self, x):
-        positions = torch.arange(0, x.size(1), device=x.device).unsqueeze(0)
-        pos_emb = self.pos_embedding(positions)
-        return x + pos_emb
+    pe = torch.zeros(max_len, hidden_dim, dtype=torch.float, device=device)
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+
+    return pe
