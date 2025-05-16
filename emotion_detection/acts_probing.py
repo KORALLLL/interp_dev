@@ -1,5 +1,6 @@
 import argparse
-import hashlib
+import shutil
+import json
 import os
 from pathlib import Path
 from extract_features import extract_features
@@ -12,50 +13,24 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchaudio
 from tqdm import tqdm
 import wespeaker
 
 
-class MaxActivationLength():
-    def __init__(self):
-        self.max_length = 0
-
-    def update(self, layer_name, activation):
-        if "pooling" in layer_name:
-            return
-        if activation.dim() == 4:
-            current_length = activation.size(3)
-        elif activation.dim() == 3:
-            current_length = activation.size(2)
-        else:
-            return
-
-        if current_length > self.max_length:
-            self.max_length = current_length
-
-
 class ActivationDataset(Dataset):
-    def __init__(self, activation_paths, labels, max_len):
+    def __init__(self, activation_paths, labels):
         self.activation_paths = activation_paths
         self.y = torch.tensor(labels, dtype=torch.long)
-        self.max_len = max_len
 
     def __getitem__(self, idx):
         activation = np.load(self.activation_paths[idx])
-        return self.pad_activation(activation), self.y[idx]
+        act_tensor = torch.from_numpy(activation).float()
+        act_tensor = act_tensor.view(-1)
+        return act_tensor, self.y[idx]
 
     def __len__(self):
         return len(self.y)
-
-    def pad_activation(self, activation):
-        tensor = torch.from_numpy(activation)
-        if tensor.dim() == 2:
-            if tensor.size(1) < self.max_len:
-                pad = (0, self.max_len - tensor.size(1))
-                tensor = torch.nn.functional.pad(tensor, pad)
-            else:
-                tensor = tensor[:, :self.max_len]
-        return tensor.mean(dim=1)
 
 
 class GetActivations(nn.Module):
@@ -134,44 +109,56 @@ def get_audio_path(audio_dir):
     return audio_files
 
 
-def get_activations(model, audio_path, device):
+def get_activations(model, audio_path, device,
+                    target_samples=16000):
     """
     Gets model activations.
     """
-    feats = extract_features(audio_path)
-    feats = feats.to(device)
+    wavform, samples = torchaudio.load(audio_path)
+
+    if wavform.shape[1] < target_samples:
+        pad = (0, target_samples - wavform.shape[1])
+        wavform = torch.nn.functional.pad(wavform, pad)
+    else:
+        wavform = wavform[:, :target_samples]
+
+    feats = extract_features(wavform, samples)
 
     with torch.no_grad():
-        activations, _ = model(feats)
+        activations = model(feats)
 
     acts = {
-        "file_path": audio_path,
-        "act": activations
+        "file_path": str(audio_path),
+        "act": activations[0] if isinstance(activations, tuple) else activations
     }
     return acts
 
 
-def get_max_length(model, audio_files, device):
-    max_activation_length = MaxActivationLength()
-
-    for audio_path in audio_files:
-        feats = extract_features(audio_path).to(device)
-        with torch.no_grad():
-            activations, _ = model(feats)
-
-        for act_dict in activations:
-            for layer_name, activation in act_dict.items():
-                max_activation_length.update(layer_name, activation)
-    return max_activation_length.max_length
-
-
-def get_activations_for_layer(model, audio_files, device, layer_name, max_act_len):
+def get_activations_for_layer(model, audio_files, device, layer_name,
+                              target_samples=16000):
     """
     Gets model activations for a specified layer.
     """
+    label_map = {}
+    path_to_dataset_split = Path(audio_files[0]).parent.parent
+    split = path_to_dataset_split.name
+    metadata_path = path_to_dataset_split / f"{split}_metadata.jsonl"
+    
+    with open(metadata_path, "r") as file:
+        for line in file:
+            entry = json.loads(line)
+            audio_path = entry["audio_path"].replace("\\", os.sep)
+            file_name = os.path.basename(audio_path)
+            emotion = entry["speaker_emo"]
+            label_map[file_name] = emotion
+    
+    labels = []
+    for f in audio_files:
+        file_name = Path(f).name
+        labels.append(label_map[file_name])
+    
     label_encoder = LabelEncoder()
-    labels = [Path(f).parent.parent.name for f in audio_files]
-    labels = label_encoder.fit_transform(labels)
+    encoded_labels = label_encoder.fit_transform(labels)
 
     save_dir = Path("activations") / layer_name
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -180,42 +167,30 @@ def get_activations_for_layer(model, audio_files, device, layer_name, max_act_le
     filtered_labels = []
 
     with torch.no_grad():
-        for k, audio_path in enumerate(tqdm(
-            audio_files,
+        for audio_path in tqdm(audio_files,
             desc=f"Extracting {layer_name} activations"
-        )):
-            feats = extract_features(audio_path).to(device)
+        ):
+            wavform, samples = torchaudio.load(str(audio_path))
+            if wavform.shape[1] < target_samples:
+                pad = (0, target_samples - wavform.shape[1])
+                wavform = torch.nn.functional.pad(wavform, pad)
+            else:
+                wavform = wavform[:, :target_samples]
+
+            feats = extract_features(wavform, samples).to(device)
             acts, _ = model(feats)
 
             activation = next((d[layer_name]
                               for d in acts if layer_name in d), None)
-            if activation is None:
-                continue
+            if activation is not None:
+                file_name = Path(audio_path).name
+                label = label_map[file_name]
+                
+                file_path = save_dir / f"{Path(audio_path).stem}.npy"
+                np.save(file_path, activation.cpu().numpy())
 
-            if "pooling" in layer_name:
-                activation = activation.flatten()
-            else:
-                activation = activation.squeeze(0)
-                if activation.dim() == 3:
-                    activation = activation.mean(dim=1)
-                    if activation.size(1) < max_act_len:
-                        pad = (0, max_act_len - activation.size(1))
-                        activation = torch.nn.functional.pad(activation, pad)
-                    else:
-                        activation = activation[:, :max_act_len]
-
-            str_audio_path = str(Path(audio_path).resolve())
-            hash_object = hashlib.sha256()
-            hash_object.update(str_audio_path.encode())
-
-            name_id = hash_object.hexdigest()[:8]
-            filename = f"{name_id}.npy"
-            filepath = save_dir / filename
-            np.save(filepath, activation.cpu().numpy())
-
-            activation_paths.append(filepath)
-            filtered_labels.append(label_encoder.transform(
-                [Path(audio_path).parent.parent.name])[0])
+                activation_paths.append(file_path)
+                filtered_labels.append(label_encoder.transform([label])[0])
     return activation_paths, filtered_labels
 
 
@@ -230,9 +205,7 @@ def train(train_loader, input_size, layer, device, num_epochs=10):
     for epoch in tqdm(range(num_epochs), desc="Training Progress"):
         model.train()
 
-        for X, y in tqdm(
-                train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}"
-        ):
+        for X, y in train_loader:
             X, y = X.to(device), y.to(device)
             outputs = model(X)
             loss = criterion(outputs, y)
@@ -372,25 +345,21 @@ def main():
     acts = get_activations(acts_model, train_files[0], device)
     layers = [list(item.keys())[0] for item in acts["act"]]
 
-    all_files = train_files + test_files    
-    max_act_len = get_max_length(acts_model, all_files, device)
-
     metrics_list = []
 
     for layer in layers:
         train_acts, train_labels = get_activations_for_layer(
-            acts_model, train_files, device, layer, max_act_len)
+            acts_model, train_files, device, layer)
         test_acts, test_labels = get_activations_for_layer(
-            acts_model, test_files, device, layer, max_act_len)
+            acts_model, test_files, device, layer)
 
-        train_dataset = ActivationDataset(train_acts, train_labels, max_act_len)
+        train_dataset = ActivationDataset(train_acts, train_labels)
         train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
 
-        test_dataset = ActivationDataset(test_acts, test_labels, max_act_len)
+        test_dataset = ActivationDataset(test_acts, test_labels)
         test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-        sample_input, _ = train_dataset[0]
-        input_size = sample_input.shape[0]
+        input_size = train_dataset[0][0].shape[0]
         
         trained_model = train(
             train_loader, input_size, layer, device)
@@ -400,6 +369,10 @@ def main():
 
         metrics = evaluate(trained_model, test_loader, device)
         metrics_list.append((layer, metrics))
+
+        layer_activation_dir = Path("activations") / layer
+        if layer_activation_dir.exists():
+            shutil.rmtree(layer_activation_dir)
 
         torch.cuda.empty_cache()
 

@@ -22,10 +22,8 @@ def compute_fbank(wavform,
     return feat
 
 
-def extract_features(audio_path: str):
-    pcm, sample_rate = torchaudio.load(audio_path,
-                                       normalize=False)
-    return extract_feature_from_pcm(pcm, sample_rate)
+def extract_features(wavform: torch.Tensor, sample_rate: int):
+    return extract_feature_from_pcm(wavform, sample_rate)
 
 
 def extract_feature_from_pcm(pcm: torch.Tensor, sample_rate: int):
