@@ -1,7 +1,7 @@
 import torch.nn as nn
-from formants.transformer.layer_norm_ada import AdaptiveLayerNorm
-from formants.transformer.multihead_self_attention_ada import MultiHeadSelfAttention
-from formants.transformer.feed_forward_ada import FeedForwardAda
+from models.layer_norm_ada import AdaptiveLayerNorm
+from models.multihead_self_attention_ada import MultiHeadSelfAttention
+from models.feed_forward_ada import FeedForwardAda
 
 class TransformerBlockAdaLN(nn.Module):
     def __init__(self, hidden_dim, num_heads=8, dropout=0.1):

@@ -4,14 +4,13 @@ import torch
 import numpy as np
 
 # Диапазоны по анализу
-f1_min, f1_max = 100, 2000
-f2_min, f2_max = 400, 3500
-f3_min, f3_max = 1000, 4500
+f1_min, f1_max = 59.13345692616717, 2443.4098356318045
+f2_min, f2_max = 318.60651180437134, 3601.0578907146446
+f3_min, f3_max = 1010.6346934807632, 4596.379377720998
 
 class DatasetFormant(torch.utils.data.Dataset):
-    def __init__(self, csv_dir, audio_dir, tokenizer, csv_files=None, embedding_dir=None):
+    def __init__(self, csv_dir, audio_dir, tokenizer, csv_files=None):
         self.data = []
-        self.embedding_dir = embedding_dir
         csv_list = csv_files if csv_files is not None else os.listdir(csv_dir)
 
         for csv_filename in csv_list:
@@ -21,7 +20,6 @@ class DatasetFormant(torch.utils.data.Dataset):
             folder2 = parts[1]
             audio_filename = filename_base + '.wav'
             audio_path = os.path.join(audio_dir, folder1, folder2, audio_filename)
-            embedding_path = os.path.join(embedding_dir, filename_base + ".npy")
 
             df = pd.read_csv(os.path.join(csv_dir, csv_filename))
 
@@ -40,7 +38,6 @@ class DatasetFormant(torch.utils.data.Dataset):
 
             self.data.append({
                 'audio_path': audio_path,
-                'embedding_path': embedding_path,
                 'phoneme_tokens': phoneme_tokens,
                 'formants': norm_formants
             })
@@ -50,8 +47,6 @@ class DatasetFormant(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         entry = self.data[idx]
-        speech_embedding = np.load(entry['embedding_path'])
-        speech_embedding = torch.tensor(speech_embedding, dtype=torch.float32)
 
         phoneme_tokens = torch.tensor(entry['phoneme_tokens'], dtype=torch.long)
         formants = torch.tensor(entry['formants'], dtype=torch.float32)
@@ -59,6 +54,5 @@ class DatasetFormant(torch.utils.data.Dataset):
         return {
             'audio_path': entry['audio_path'],
             'phoneme_tokens': phoneme_tokens,
-            'formants': formants,
-            'speech_embedding': speech_embedding
+            'formants': formants
         }
