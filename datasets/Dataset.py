@@ -1,0 +1,58 @@
+import os
+import pandas as pd
+import torch
+import numpy as np
+
+# Диапазоны по анализу
+f1_min, f1_max = 59.13345692616717, 2443.4098356318045
+f2_min, f2_max = 318.60651180437134, 3601.0578907146446
+f3_min, f3_max = 1010.6346934807632, 4596.379377720998
+
+class DatasetFormant(torch.utils.data.Dataset):
+    def __init__(self, csv_dir, audio_dir, tokenizer, csv_files=None):
+        self.data = []
+        csv_list = csv_files if csv_files is not None else os.listdir(csv_dir)
+
+        for csv_filename in csv_list:
+            filename_base = os.path.splitext(csv_filename)[0]
+            parts = filename_base.split('_')
+            folder1 = parts[0]
+            folder2 = parts[1]
+            audio_filename = filename_base + '.wav'
+            audio_path = os.path.join(audio_dir, folder1, folder2, audio_filename)
+
+            df = pd.read_csv(os.path.join(csv_dir, csv_filename))
+
+            if df[['F1', 'F2', 'F3']].isna().any().any():
+                continue
+
+            phoneme_list = df['Phoneme'].tolist()
+            phoneme_tokens = tokenizer.encode(phoneme_list)
+            formants = df[['F1', 'F2', 'F3']].values.astype(float)
+
+            norm_f1 = (formants[:, 0] - f1_min) / (f1_max - f1_min)
+            norm_f2 = (formants[:, 1] - f2_min) / (f2_max - f2_min)
+            norm_f3 = (formants[:, 2] - f3_min) / (f3_max - f3_min)
+
+            norm_formants = np.stack([norm_f1, norm_f2, norm_f3], axis=-1)
+
+            self.data.append({
+                'audio_path': audio_path,
+                'phoneme_tokens': phoneme_tokens,
+                'formants': norm_formants
+            })
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        entry = self.data[idx]
+
+        phoneme_tokens = torch.tensor(entry['phoneme_tokens'], dtype=torch.long)
+        formants = torch.tensor(entry['formants'], dtype=torch.float32)
+
+        return {
+            'audio_path': entry['audio_path'],
+            'phoneme_tokens': phoneme_tokens,
+            'formants': formants
+        }
