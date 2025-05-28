@@ -3,6 +3,7 @@ from pathlib import Path
 from datasets import ClassificationEmbeddingsDataset
 
 import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
 import torch
@@ -66,6 +67,26 @@ def save_visualization(model, vectors, labels, save_path, device):
     plt.legend()
     plt.savefig(save_path)
     plt.close()
+    return x1_reduced
+
+
+def save_embs_to_csv(data, save_path):
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df = pd.DataFrame()
+    df['filename'] = data['filenames']
+    df['true_label'] = data['true_labels']
+    df['x_coordinate'] = data['x_coord']
+    df['y_coordinate'] = data['y_coord']
+
+    df_preds = pd.DataFrame()
+    df_preds['filename'] = data['filenames']
+    df_preds['prediction'] = data['predictions']
+
+    name_part, ext = save_path.rsplit('.', 1)
+    preds_path = f"{name_part}_predicts.{ext}"
+
+    df.to_csv(save_path, index=False)
+    df_preds.to_csv(preds_path, index=False)
 
 
 def save_emb_metrics(metrics, save_path):

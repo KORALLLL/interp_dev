@@ -19,7 +19,7 @@ def evaluate_emb_model(model, test_loader, device):
     true_labels = []
     pred_labels = []
     with torch.no_grad():
-        for embeddings_batch, labels_batch in tqdm(
+        for embeddings_batch, labels_batch, _ in tqdm(
                 test_loader, desc="Evaluation Progress"):
             embeddings_batch = embeddings_batch.to(device)
 
@@ -39,7 +39,7 @@ def evaluate_emb_model(model, test_loader, device):
         "f1_score": f1_score(true_labels, pred_labels)
     }
 
-    return metrics
+    return metrics, true_labels, pred_labels
 
 
 def evaluate_probing(layer, y_pred, y_true):
@@ -164,7 +164,7 @@ def save_to_csv(chunk_rows, layer, save_path):
             true_label = row["true_label"]
             prediction = row[prediction_col]
 
-            if filename in df_existing["filename"].values:
+            if str(filename) in df_existing["filename"].values:
                 idx = df_existing[df_existing["filename"] == filename].index[0]
 
                 if pd.isna(df_existing.at[idx, "true_label"]):

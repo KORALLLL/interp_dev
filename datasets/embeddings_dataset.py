@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from .base_dataset import BaseDataset
 
 import chromadb
@@ -37,10 +38,10 @@ class ClassificationEmbeddingsDataset(BaseDataset):
                 the ChromaDB database using the get_chroma_embeddings method.
         """
         if self.source_type == "npy":
-            audio_data, labels = self.get_npy_embeddings(
+            audio_data, labels, filenames = self.get_npy_embeddings(
                 self.source_path, self.split)
         elif self.source_type == "chromadb":
-            audio_data, labels = self.get_chroma_embeddings(
+            audio_data, labels, filenames = self.get_chroma_embeddings(
                 self.source_path, self.split, self.collection_name)
         else:
             raise ValueError(
@@ -49,6 +50,7 @@ class ClassificationEmbeddingsDataset(BaseDataset):
 
         self.audio_data = torch.tensor(audio_data, dtype=torch.float32)
         self.labels = torch.tensor(labels, dtype=torch.long)
+        self.filenames = filenames
 
     def get_npy_embeddings(self, source_path, split):
         """
@@ -59,7 +61,11 @@ class ClassificationEmbeddingsDataset(BaseDataset):
         data = source[split]
         embeddings = np.array([item['embedding'] for item in data])
         labels = self.lb.fit_transform([item['label'] for item in data])
-        return embeddings, labels
+        filenames = [
+            '/'.join(Path(item['file_path']).parts[-2:])
+            for item in data
+        ]
+        return embeddings, labels, filenames
 
     def get_chroma_embeddings(self, source_path, split, collection_name):
         """
@@ -72,4 +78,8 @@ class ClassificationEmbeddingsDataset(BaseDataset):
         embeddings = np.array(results['embeddings'], dtype=np.float32)
         labels = self.lb.fit_transform(
             [item['label'] for item in results['metadatas']])
-        return embeddings, labels
+        filenames = [
+            '/'.join(Path(item['file_path']).parts[-2:])
+            for item in results['metadatas']
+        ]
+        return embeddings, labels, filenames

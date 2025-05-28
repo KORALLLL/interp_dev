@@ -9,6 +9,7 @@ from .file_ops import (
 from .embeddings import (
     assign_labels_by_parent_dir,
     get_loaders,
+    save_embs_to_csv,
     save_emb_metrics,
     save_visualization
 )
