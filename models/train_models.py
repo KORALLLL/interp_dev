@@ -19,7 +19,7 @@ def train_emb_model(
     for epoch in tqdm(range(num_epoch), desc="Training Progress"):
         model.train()
 
-        for embeddings_batch, labels_batch in tqdm(
+        for embeddings_batch, labels_batch, _ in tqdm(
                 train_loader, desc=f"Epoch {epoch + 1}/{num_epoch}"
         ):
             embeddings_batch = embeddings_batch.to(device)
@@ -49,7 +49,7 @@ def train_probing_model(
 
     model.train()
     for epoch in tqdm(range(num_epoch), desc="Training Progress"):
-        for X_batch, y_batch in train_loader:
+        for X_batch, y_batch, _ in train_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device).float()
 
             optimizer.zero_grad()

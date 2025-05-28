@@ -85,7 +85,7 @@ def load_or_extract_acts(i, chunk, acts_model, device, layer, mode):
                     identity_file=f"{mode}_identity_{i}_{num}.pt")
                 activations.append(layer_acts[layer])
 
-    dataset = ActivationDataset(activations, labels)
+    dataset = ActivationDataset(activations, labels, chunk)
 
     return dataset, activations, labels
 
@@ -116,18 +116,22 @@ def test(
         save_tmp(labels, "test", f"tmp_labels_{i}.pt")
 
         probing_model.eval()
-        y_pred_chunk, y_true_chunk = [], []
+        y_pred_chunk, y_true_chunk, filenames = [], [], []
         with torch.no_grad():
-            for X_batch, y_batch in loader:
+            for X_batch, y_batch, path_batch in loader:
                 X_batch = X_batch.to(device)
                 outputs = probing_model(X_batch).cpu()
                 y_pred_chunk.extend(outputs.numpy())
                 y_true_chunk.extend(y_batch.numpy())
+                filenames.extend(
+                    ['/'.join(Path(filepath).parts[-2:]) for filepath in
+                     path_batch]
+                )
 
-        for filepath, true_label, pred in zip(chunk, y_true_chunk,
+        for filepath, true_label, pred in zip(filenames, y_true_chunk,
                                               y_pred_chunk):
             chunk_rows.append({
-                "filename": os.path.relpath(filepath, args.test_dir),
+                "filename": str(filepath),
                 "true_label": true_label,
                 f"prediction_{layer}": int(pred > 0.5)
             })

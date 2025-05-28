@@ -9,13 +9,16 @@ class BaseDataset(Dataset, abc.ABC):
     def __init__(self):
         self.audio_data = None
         self.labels = None
+        self.filenames = None
 
     def __getitem__(self, idx):
         if self.audio_data is None:
             raise NotImplementedError("self.audio_data is not initialized")
         if self.labels is None:
             raise NotImplementedError("self.labels is not initialized")
-        return self.audio_data[idx], self.labels[idx]
+        if self.filenames is None:
+            raise NotImplementedError("self.filenames is not initialized")
+        return self.audio_data[idx], self.labels[idx], self.filenames[idx]
 
     def __len__(self):
         return len(self.labels)
