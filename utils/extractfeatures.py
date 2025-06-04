@@ -1,7 +1,6 @@
 import torch
 import torchaudio
 import torchaudio.compliance.kaldi as kaldi
-import torchaudio.transforms as T
 
 resample_rate = 16000
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,11 +25,6 @@ def compute_fbank(wavform,
 def extract_features(audio_path: str):
     pcm, sample_rate = torchaudio.load(audio_path,
                                        normalize=False)
-    if sample_rate != 16000:
-        resampler = T.Resample(orig_freq=sample_rate, new_freq=16000)
-        pcm = resampler(pcm)
-        sample_rate = 16000
-    pcm = pcm[:, :sample_rate * 2]
     return extract_feature_from_pcm(pcm, sample_rate)
 
 
