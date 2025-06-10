@@ -1,6 +1,8 @@
 import os
 import shutil
 from pathlib import Path
+import random
+import gc
 
 import torch
 import torch.nn as nn
@@ -16,6 +18,7 @@ from models.PhonemeTokenizer import PhonemeTokenizer
 import wespeaker
 from utils import extract_features
 from models import MlpAdaLN
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MAX_LEN = 512
 PHONEME_VOCAB_PATH = r"C:\Users\Илья\Desktop\fignya\interp_dev\models\PhonemeTokenizer\phoneme_vocab.json"
@@ -84,11 +87,6 @@ class GetActivations(nn.Module):
                     activations[f"{name} relu 2"] = out
                     return activations, out
 
-        if target_layer == "pooling":
-            out = self.model.model.pooling(out)
-            activations["pooling"] = out
-            return activations, out
-
         raise ValueError(f"Layer '{target_layer}' not found in model.")
 
 
@@ -100,7 +98,6 @@ def get_layers(model):
                 layers.append(f"{name} relu 1")
                 layers.append(f"{name} SimAM 1")
                 layers.append(f"{name} relu 2")
-    layers.append("pooling")
     return layers
 
 
@@ -108,7 +105,7 @@ def get_activations(model, dataset_entries, device, chunk_num, layer):
     activations, tokens, masks, targets = [], [], [], []
     with torch.no_grad():
         for i, entry in enumerate(tqdm(dataset_entries, desc=f"Extracting {layer}")):
-            feats = extract_features(entry["audio_path"]).unsqueeze(0).to(device)
+            feats = extract_features(entry["audio_path"], is_cut=False).unsqueeze(0).to(device)
             acts, _ = model(feats, layer, identity_file=f"identity_{chunk_num}_{i}.pt")
 
             activations.append(acts[layer].squeeze(0).cpu())
@@ -123,45 +120,51 @@ def get_activations(model, dataset_entries, device, chunk_num, layer):
     return activations, tokens, masks, targets
 
 
-def pad_and_flatten_feats(feats_list):
-    pooled_feats = []
+
+def pad_and_stack_feats(feats_list, hidden_dim=512):
+    """
+    feats_list: List of [C, H, W] тензоров
+    Возвращает [B, C, H, max_W]
+    """
+    max_W = max(f.shape[2] for f in feats_list)
+    C, H = feats_list[0].shape[0:2]
+
+    padded_feats = []
 
     print(f"\n[DEBUG] Total embeddings: {len(feats_list)}")
 
     for idx, f in enumerate(feats_list):
         print(f"\n[Sample {idx}] Original shape: {f.shape}")
 
-        if f.ndim == 1:
-            pooled = f
-            print(f"[Sample {idx}] Detected pre-pooled vector.")
-        elif f.ndim == 2:
-            pooled = f.mean(dim=-1)
-        elif f.ndim == 3:
-            pooled = f.mean(dim=(1, 2))
-        else:
-            raise ValueError(f"Unsupported feature shape: {f.shape}")
+        if f.ndim != 3:
+            raise ValueError(f"[Sample {idx}] Unsupported feature shape: {f.shape}, expected [C, H, W]")
 
-        print(f"[Sample {idx}] After pooling: {pooled.shape}")
-        print(f"[Sample {idx}] Mean={pooled.mean().item():.4f}, Std={pooled.std().item():.4f}")
-
+        # Отладка для первых 3
         if idx < 3:
-            mlp =   MlpAdaLN(input_dim=pooled.shape[0], hidden_dim=512)
-            params = mlp(pooled.unsqueeze(0))
+            mlp = MlpAdaLN(C=C, H=H, W=f.shape[2], hidden_dim=hidden_dim)
+            params = mlp(f.unsqueeze(0))  # [1, C, H, W]
 
             names = ['alpha1', 'beta1', 'gamma1', 'alpha2', 'beta2', 'gamma2']
             for name, param in zip(names, params):
                 print(f"  {name}: shape={param.shape}, mean={param.mean().item():.4f}, std={param.std().item():.4f}")
 
-        pooled_feats.append(pooled)
+        # Паддинг по W
+        pad_w = max_W - f.shape[2]
+        if pad_w > 0:
+            f = F.pad(f, (0, pad_w), value=0.0)
 
-    return torch.stack(pooled_feats)
+        padded_feats.append(f)
+
+    return torch.stack(padded_feats)  # [B, C, H, max_W]
 
 
 
-def train_model(loader, input_dim, device, tokenizer):
+def train_model(loader, C, H, W, device, tokenizer):
     model = FormantPredictor(
         vocab_size=len(tokenizer.vocab),
-        input_dim=input_dim,
+        C=C,
+        H=H,
+        W=W,
         hidden_dim=512,
         num_formants=3,
         pad_token_id=tokenizer.pad_token_id,
@@ -177,7 +180,7 @@ def train_model(loader, input_dim, device, tokenizer):
         for feats, tokens, masks, tgts in loader:
             feats, tokens, masks, tgts = feats.to(device), tokens.to(device), masks.to(device), tgts.to(device)
             optimizer.zero_grad()
-            preds = model(token_ids=tokens, attention_mask=masks, mlp_input=feats)
+            preds = model(token_ids=tokens, attention_mask=masks, speech_embedding=feats)
             loss = criterion(preds, tgts)
             loss.backward()
             optimizer.step()
@@ -230,9 +233,6 @@ def plot_rmse(metrics_list, save_path):
 
 
 def main():
-    import random
-    import gc
-
     AUDIO_DIR = r"C:\Users\Илья\Desktop\libritts\test-clean"
     CSV_DIR = r"C:\Users\Илья\Desktop\libritts\formants"
     WESPEAKER_DIR = r"C:\Users\Илья\Desktop\voxblink"
@@ -252,7 +252,7 @@ def main():
     model = wespeaker.load_model_local(WESPEAKER_DIR)
     model.set_device(DEVICE)
     acts_model = GetActivations(model)
-    layers = get_layers(model)
+    layers = [l for l in get_layers(model) if l != "pooling"]
 
     total_subset_size = 10
     chunk_size = 5
@@ -290,7 +290,8 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
 
-        feats = pad_and_flatten_feats(all_feats)
+        feats = pad_and_stack_feats(all_feats)  # [B, C, H, W]
+        C, H, W = feats.shape[1:]
 
         max_tok_len = max(t.shape[0] for t in all_toks)
         toks = torch.stack([F.pad(t, (0, max_tok_len - t.shape[0]), value=tokenizer.pad_token_id) for t in all_toks])
@@ -302,14 +303,14 @@ def main():
             list(zip(feats, toks, masks, tgts)), batch_size=32, shuffle=True
         )
 
-        model = train_model(loader, input_dim=feats.shape[1], device=DEVICE, tokenizer=tokenizer)
+        model = train_model(loader, C=C, H=H, W=W, device=DEVICE, tokenizer=tokenizer)
 
         model.eval()
         preds = []
         with torch.no_grad():
             for X, T, M, Y in DataLoader(list(zip(feats, toks, masks, tgts)), batch_size=32):
                 X, T, M = X.to(DEVICE), T.to(DEVICE), M.to(DEVICE)
-                pred = model(token_ids=T, attention_mask=M, mlp_input=X)
+                pred = model(token_ids=T, attention_mask=M, speech_embedding=X)
                 preds.extend(pred.cpu().numpy())
 
         metric = evaluate(layer, preds, tgts.numpy())
@@ -326,7 +327,6 @@ def main():
         torch.cuda.empty_cache()
 
     acts_model.delete_identity()
-
     metrics = read_metrics(METRICS_PATH)
     plot_rmse(metrics, PLOT_PATH)
     os.remove(METRICS_PATH)

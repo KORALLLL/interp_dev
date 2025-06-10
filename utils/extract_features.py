@@ -23,14 +23,16 @@ def compute_fbank(wavform,
     return feat
 
 
-def extract_features(audio_path: str):
-    pcm, sample_rate = torchaudio.load(audio_path,
-                                       normalize=False)
-    if sample_rate != 16000:
-        resampler = T.Resample(orig_freq=sample_rate, new_freq=16000)
-        pcm = resampler(pcm)
-        sample_rate = 16000
-    pcm = pcm[:, :sample_rate * 2]
+def extract_features(audio_path: str, is_cut: bool = True):
+    pcm, sample_rate = torchaudio.load(audio_path, normalize=False)
+
+    if is_cut:
+        if sample_rate != 16000:
+            resampler = T.Resample(orig_freq=sample_rate, new_freq=16000)
+            pcm = resampler(pcm)
+            sample_rate = 16000
+        pcm = pcm[:, :sample_rate * 2]
+
     return extract_feature_from_pcm(pcm, sample_rate)
 
 
