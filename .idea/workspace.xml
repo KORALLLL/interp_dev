@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="6dd9cd97-e17b-4854-a240-b1e3a276c356" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/interpretability_scripts/Train.py" beforeDir="false" afterPath="$PROJECT_DIR$/interpretability_scripts/Train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/mlp_adaln.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/mlp_adaln.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/transformer_encoder.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/transformer_encoder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/transformer_for_linear_probing.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/transformer_for_linear_probing.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/extract_features.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/extract_features.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/extractfeatures.py" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="2y2Jfa6RD5JmPOYfJMi5js0FI8Q" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.Train.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;
+  }
+}</component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-495700d161d3-aa17d162503b-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-243.22562.220" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="6dd9cd97-e17b-4854-a240-b1e3a276c356" name="Changes" comment="" />
+      <created>1749026839560</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1749026839560</updated>
+    </task>
+    <servers />
+  </component>
+</project>
